@@ -25,7 +25,11 @@ def synthetic_levels(n: int = 900, seed: int = 0) -> pd.DataFrame:
         },
         index=idx,
     )
-    y = sum(TRUE[c] * chg[c] for c in TRUE) + rng.normal(0, 0.25, n)
+    # NY-close drivers act on the NEXT USD/KRW day (session timing, see config.NY_CLOSE)
+    from krwmon.config import NY_CLOSE
+
+    y = sum(TRUE[c] * (chg[c].shift(1).fillna(0) if c in NY_CLOSE else chg[c]) for c in TRUE)
+    y = y + rng.normal(0, 0.25, n)
     lv = pd.DataFrame(index=idx)
     lv["USDKRW"] = 1300 * np.exp(np.cumsum(y) / 100)
     for c in ("DXY", "USDCNH", "KOSPI", "BRENT"):
@@ -83,9 +87,11 @@ def test_end_to_end_writes_note(tmp_path):
 
 def test_falls_back_when_yahoo_fails(monkeypatch, tmp_path):
     """If Yahoo fails, USD/KRW comes from FRED instead of crashing the run."""
-    lv = synthetic_levels(300)
+    lv = synthetic_levels(400)
 
     def broken_yahoo(code, start, attempts=3):
+        if code == "CNH=X":
+            return lv["USDCNH"].tail(1)  # what Yahoo actually did: one row only
         raise RuntimeError("Yahoo down")
 
     fred_map = {"DEXKOUS": "USDKRW", "DTWEXBGS": "DXY", "DEXCHUS": "USDCNH",
@@ -103,3 +109,12 @@ def test_falls_back_when_yahoo_fails(monkeypatch, tmp_path):
     with pytest.warns(UserWarning):
         got = data.load_levels("2021-01-01", tmp_path)
     assert set(got.columns) >= {"USDKRW", "DXY", "USDCNH", "KOSPI", "UST2Y", "BRENT"}
+
+
+def test_sparse_driver_is_dropped_not_fatal():
+    lv = synthetic_levels(400)
+    lv["USDCNH"] = np.nan
+    lv.iloc[-1, lv.columns.get_loc("USDCNH")] = 7.1
+    with pytest.warns(UserWarning, match="Dropping USDCNH"):
+        ch = data.to_changes(lv)
+    assert "USDCNH" not in ch.columns and len(ch) > 300

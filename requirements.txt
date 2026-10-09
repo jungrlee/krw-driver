@@ -6,3 +6,4 @@ yfinance>=0.2.54
 pytest>=7.0
 # optional: KOSPI foreign flows panel (python -m krwmon --flows)
 # pykrx>=1.0
+certifi

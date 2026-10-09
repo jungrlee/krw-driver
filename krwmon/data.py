@@ -7,6 +7,7 @@ same calendar interval for every series (no holiday-filled 0% days).
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import urllib.request
@@ -16,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .config import ECOS_SERIES, FALLBACKS, SERIES
+from .config import ECOS_SERIES, FALLBACKS, MIN_COVERAGE, MIN_HISTORY, NY_CLOSE, SERIES, TARGET
 
 
 # ---------------------------------------------------------------- fetchers
@@ -59,9 +60,27 @@ def fetch_krx_index(code: str, start: str) -> pd.Series:
     return close.astype(float).dropna()
 
 
+def _ssl_context():
+    """SSL context using certifi's CA bundle (python.org builds on macOS ship without one)."""
+    import ssl
+
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+def _get(url: str, timeout: int = 30) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": "krw-driver-monitor"})
+    with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as r:
+        return r.read()
+
+
 def fetch_fred(code: str, start: str) -> pd.Series:
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={code}&cosd={start}"
-    df = pd.read_csv(url)
+    df = pd.read_csv(io.BytesIO(_get(url)))
     s = pd.to_numeric(df[code], errors="coerce")  # FRED marks missing days with "."
     s.index = pd.to_datetime(df[df.columns[0]])
     return s.dropna()
@@ -74,8 +93,7 @@ def fetch_ecos(stat_code: str, item_code: str, start: str, api_key: str) -> pd.S
         f"https://ecos.bok.or.kr/api/StatisticSearch/{api_key}/json/kr/1/100000/"
         f"{stat_code}/D/{begin}/{end}/{item_code}"
     )
-    with urllib.request.urlopen(url, timeout=30) as r:
-        payload = json.load(r)
+    payload = json.loads(_get(url))
     rows = payload.get("StatisticSearch", {}).get("row", [])
     if not rows:
         raise RuntimeError(f"ECOS returned no rows for {stat_code}/{item_code}: {payload}")
@@ -107,6 +125,16 @@ def fetch_foreign_flows(start: str) -> pd.Series | None:
     return s.rename("KOSPI_FOREIGN_NET")
 
 
+def _fetch(source: str, code: str, start: str) -> pd.Series:
+    if source == "yahoo":
+        return fetch_yahoo(code, start)
+    if source == "fred":
+        return fetch_fred(code, start)
+    if source == "krx":
+        return fetch_krx_index(code, start)
+    raise ValueError(f"unknown source {source}")
+
+
 # ---------------------------------------------------------------- loading
 def load_levels(start: str, cache_dir: Path, offline: bool = False) -> pd.DataFrame:
     """Return a DataFrame of raw levels, one column per series (not yet aligned)."""
@@ -118,24 +146,24 @@ def load_levels(start: str, cache_dir: Path, offline: bool = False) -> pd.DataFr
         return pd.read_csv(cache, index_col=0, parse_dates=True)
 
     cols: dict[str, pd.Series] = {}
-    for name, (source, code, *_rest) in SERIES.items():
-        try:
-            cols[name] = fetch_yahoo(code, start) if source == "yahoo" else fetch_fred(code, start)
-            continue
-        except Exception as exc:
-            first_err = exc
-        fb = FALLBACKS.get(name)
-        if fb:
-            fb_source, fb_code, note = fb
+    for name, (source, code, label, *_rest) in SERIES.items():
+        attempts = [(source, code, label)] + FALLBACKS.get(name, [])
+        errors = []
+        for i, (src, cd, desc) in enumerate(attempts):
             try:
-                cols[name] = fetch_fred(fb_code, start) if fb_source == "fred" else fetch_krx_index(fb_code, start)
-                warnings.warn(f"{name}: primary source failed ({first_err}); using {note}")
-                continue
+                s = _fetch(src, cd, start)
+                if len(s) < MIN_HISTORY:
+                    raise RuntimeError(f"only {len(s)} rows returned")
+                cols[name] = s
+                if i > 0:
+                    warnings.warn(f"{name}: using fallback {desc} ({'; '.join(errors)})")
+                break
             except Exception as exc:
-                first_err = exc
-        if name == "USDKRW":
-            raise RuntimeError(f"Could not load USD/KRW from any source: {first_err}")
-        warnings.warn(f"Skipping {name} ({code}): {first_err}")
+                errors.append(f"{src}:{cd} failed: {exc}")
+        else:
+            if name == TARGET:
+                raise RuntimeError(f"Could not load {name} from any source: {errors}")
+            warnings.warn(f"Skipping {name}: {'; '.join(errors)}")
 
     key = os.environ.get("ECOS_API_KEY")
     if key:
@@ -154,11 +182,23 @@ def to_changes(levels: pd.DataFrame) -> pd.DataFrame:
     """Align on common dates, then convert levels to daily changes.
 
     Prices -> log returns in %; yields -> changes in basis points.
+    Drivers in NY_CLOSE are lagged one day to match USD/KRW's session timing.
     """
     transforms = {n: t for n, (_s, _c, t, *_r) in SERIES.items()}
     transforms.update({n: t for n, (_s, _c, t, *_r) in ECOS_SERIES.items()})
 
-    aligned = levels.dropna(how="any")  # common trading dates only
+    # Drop drivers too sparse to align with USD/KRW, rather than losing every date.
+    base = levels[TARGET].notna()
+    keep = [TARGET]
+    for col in levels.columns:
+        if col == TARGET:
+            continue
+        coverage = levels.loc[base, col].notna().mean()
+        if coverage >= MIN_COVERAGE:
+            keep.append(col)
+        else:
+            warnings.warn(f"Dropping {col}: data on only {coverage:.0%} of USD/KRW dates")
+    aligned = levels[keep].dropna(how="any")  # common trading dates only
     out = {}
     for col in aligned.columns:
         x = aligned[col]
@@ -166,4 +206,9 @@ def to_changes(levels: pd.DataFrame) -> pd.DataFrame:
             out[col] = x.diff() * 100.0  # yields are quoted in %, so ×100 = bp
         else:
             out[col] = np.log(x).diff() * 100.0
-    return pd.DataFrame(out).dropna()
+    changes = pd.DataFrame(out)
+    # New York-close drivers: yesterday's NY move explains today's Seoul-session move.
+    for col in changes.columns:
+        if col in NY_CLOSE:
+            changes[col] = changes[col].shift(1)
+    return changes.dropna()

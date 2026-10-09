@@ -186,8 +186,9 @@ def write_note(
         f"- In-sample R² for comparison: {ev.in_sample_r2:.0%} — optimistic by construction.",
         f"- Sign of the move matched on **{ev.hit_rate:.0%}** of days.",
         "- This is attribution, not a forecast: same-day drivers explain same-day moves.",
-        "- Closes are not synchronous (KOSPI closes in Seoul, DXY and yields in New York), "
-        "which blurs daily attribution; read 20-day totals with more confidence than single days.",
+        "- Timing: USD/KRW is matched with the previous New York session for DXY, US yields and oil, "
+        "and with the same Seoul session for KOSPI. Close times still differ, so read 20-day totals "
+        "with more confidence than single days.",
         "",
     ]
     path = out_dir / f"{date:%Y-%m-%d}.md"

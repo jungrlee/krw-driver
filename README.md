@@ -29,16 +29,17 @@ Korean equities +0.12pp, Rates +0.03pp, Oil +0.01pp; +0.05pp is unexplained
 1. **Data.** Daily closes from Yahoo Finance (USD/KRW, DXY, USD/CNH, KOSPI, Brent) and FRED (US 2y Treasury yield). Optional: the Korea 3y KTB yield from the Bank of Korea ECOS API, and KOSPI foreign flows from KRX via `pykrx`.
 2. **Alignment before returns.** Series are aligned on common trading dates *before* computing changes, so every daily change covers the same calendar interval. Holidays are dropped, not filled with 0% moves (which would understate volatility and distort betas).
 3. **Changes.** Prices become log returns in %; yields become changes in basis points.
-4. **Rolling regression.** ΔUSD/KRW is regressed on the drivers over a rolling 120-day window, so sensitivities can drift as regimes change.
-5. **Point-in-time attribution.** Day *t*'s move is attributed using betas estimated **through day t−1 only**. A coefficient never "knows" the move it is explaining. A unit test enforces this: deleting all data after *t* must not change day *t*'s attribution.
-6. **Honest evaluation.** The note reports the out-of-sample explained share of daily moves next to the in-sample R², which is optimistic by construction.
+4. **Session timing.** Yahoo's USD/KRW daily bar is stamped around the Seoul session, which trades *after* New York closed the previous day. So USD/KRW on day *t* is paired with the **previous** New York move in DXY, US yields and oil, and with the **same-day** KOSPI. Getting this right matters: on 2018–2026 data, USD/KRW's correlation with same-day DXY is about 0.10, but with the prior New York session it is about 0.47. Lagging only ever uses earlier information, so it adds no look-ahead.
+5. **Rolling regression.** ΔUSD/KRW is regressed on the drivers over a rolling 120-day window, so sensitivities can drift as regimes change.
+6. **Point-in-time attribution.** Day *t*'s move is attributed using betas estimated **through day t−1 only**. A coefficient never "knows" the move it is explaining. A unit test enforces this: deleting all data after *t* must not change day *t*'s attribution.
+7. **Honest evaluation.** The note reports the out-of-sample explained share of daily moves next to the in-sample R², which is optimistic by construction.
 
 **Expected signs** (a sanity check on the output): DXY and USD/CNH positive (a broadly stronger dollar or weaker yuan lifts USD/KRW); KOSPI negative (risk-on and foreign equity inflows strengthen the won); US 2y positive on balance (wider rate gap supports the dollar).
 
 ## Limitations, stated up front
 
 - **Attribution, not forecasting.** Same-day drivers explain same-day moves. Nothing here is a trading signal.
-- **Asynchronous closes.** KOSPI closes in Seoul; DXY and Treasuries in New York; Yahoo's USD/KRW close is not the onshore 15:30 fix. Single-day attribution is blurred, so 20-day totals deserve more weight than any one day.
+- **Asynchronous closes.** The session-timing fix pairs each USD/KRW day with the right New York and Seoul sessions, but close times still differ and Yahoo's USD/KRW bar is not the onshore 15:30 fix. 20-day totals deserve more weight than any single day.
 - **Collinear drivers.** DXY and USD/CNH move together, so their individual betas are less stable than their combined "Dollar bloc" contribution. That is why the headline reports buckets.
 - **Unstable betas.** Sensitivities change with regimes; the rolling window trades noise (short) against staleness (long).
 - **The residual is not "noise".** Onshore-specific drivers (exporter dollar sales, NPS hedging, BoK smoothing, positioning) live in the unexplained bucket.
