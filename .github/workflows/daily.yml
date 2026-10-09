@@ -1,0 +1,30 @@
+name: daily-note
+
+on:
+  schedule:
+    - cron: "45 22 * * 0-4"   # 07:45 KST, Monday–Friday
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - run: python -m krwmon
+        env:
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
+      - name: Commit note
+        run: |
+          git config user.name "krw-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add reports
+          git diff --cached --quiet || git commit -m "Daily note $(date -u +%F)"
+          git push
