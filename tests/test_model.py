@@ -79,3 +79,27 @@ def test_end_to_end_writes_note(tmp_path):
     assert "USD/KRW Driver Note" in text and "Out-of-sample" in text
     assert (tmp_path / "latest.md").exists()
     assert len(list((tmp_path / "img").glob("*.png"))) == 3
+
+
+def test_falls_back_when_yahoo_fails(monkeypatch, tmp_path):
+    """If Yahoo fails, USD/KRW comes from FRED instead of crashing the run."""
+    lv = synthetic_levels(300)
+
+    def broken_yahoo(code, start, attempts=3):
+        raise RuntimeError("Yahoo down")
+
+    fred_map = {"DEXKOUS": "USDKRW", "DTWEXBGS": "DXY", "DEXCHUS": "USDCNH",
+                "DCOILBRENTEU": "BRENT", "DGS2": "UST2Y"}
+
+    def fake_fred(code, start):
+        return lv[fred_map[code]]
+
+    def fake_krx(code, start):
+        return lv["KOSPI"]
+
+    monkeypatch.setattr(data, "fetch_yahoo", broken_yahoo)
+    monkeypatch.setattr(data, "fetch_fred", fake_fred)
+    monkeypatch.setattr(data, "fetch_krx_index", fake_krx)
+    with pytest.warns(UserWarning):
+        got = data.load_levels("2021-01-01", tmp_path)
+    assert set(got.columns) >= {"USDKRW", "DXY", "USDCNH", "KOSPI", "UST2Y", "BRENT"}

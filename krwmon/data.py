@@ -16,20 +16,46 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .config import ECOS_SERIES, SERIES
+from .config import ECOS_SERIES, FALLBACKS, SERIES
 
 
 # ---------------------------------------------------------------- fetchers
-def fetch_yahoo(ticker: str, start: str) -> pd.Series:
+def fetch_yahoo(ticker: str, start: str, attempts: int = 3) -> pd.Series:
+    """Daily closes from Yahoo, trying two yfinance methods with retries."""
+    import time
+
     import yfinance as yf
 
-    df = yf.download(ticker, start=start, auto_adjust=True, progress=False)
-    if df is None or df.empty:
-        raise RuntimeError(f"Yahoo returned no data for {ticker}")
-    close = df["Close"]
-    if isinstance(close, pd.DataFrame):  # newer yfinance returns MultiIndex columns
-        close = close.iloc[:, 0]
-    close.index = pd.to_datetime(close.index).tz_localize(None).normalize()
+    last_err: Exception | None = None
+    for i in range(attempts):
+        try:
+            df = yf.Ticker(ticker).history(start=start, auto_adjust=True)
+            if df is None or df.empty:
+                df = yf.download(ticker, start=start, auto_adjust=True, progress=False)
+            if df is not None and not df.empty:
+                close = df["Close"]
+                if isinstance(close, pd.DataFrame):  # newer yfinance: MultiIndex columns
+                    close = close.iloc[:, 0]
+                idx = pd.to_datetime(close.index)
+                if idx.tz is not None:
+                    idx = idx.tz_localize(None)
+                close.index = idx.normalize()
+                return close.astype(float).dropna()
+        except Exception as exc:  # network / Yahoo format changes
+            last_err = exc
+        time.sleep(1.5 * (i + 1))
+    raise RuntimeError(f"Yahoo returned no data for {ticker} ({last_err})")
+
+
+def fetch_krx_index(code: str, start: str) -> pd.Series:
+    """KRX index closes via pykrx (code '1001' = KOSPI). Optional dependency."""
+    from pykrx import stock
+
+    begin = pd.Timestamp(start).strftime("%Y%m%d")
+    end = pd.Timestamp.today().strftime("%Y%m%d")
+    df = stock.get_index_ohlcv(begin, end, code)
+    close = df[[c for c in df.columns if "종가" in str(c) or str(c).lower() == "close"][0]]
+    close.index = pd.to_datetime(close.index)
     return close.astype(float).dropna()
 
 
@@ -95,10 +121,21 @@ def load_levels(start: str, cache_dir: Path, offline: bool = False) -> pd.DataFr
     for name, (source, code, *_rest) in SERIES.items():
         try:
             cols[name] = fetch_yahoo(code, start) if source == "yahoo" else fetch_fred(code, start)
+            continue
         except Exception as exc:
-            if name == "USDKRW":
-                raise
-            warnings.warn(f"Skipping {name} ({code}): {exc}")
+            first_err = exc
+        fb = FALLBACKS.get(name)
+        if fb:
+            fb_source, fb_code, note = fb
+            try:
+                cols[name] = fetch_fred(fb_code, start) if fb_source == "fred" else fetch_krx_index(fb_code, start)
+                warnings.warn(f"{name}: primary source failed ({first_err}); using {note}")
+                continue
+            except Exception as exc:
+                first_err = exc
+        if name == "USDKRW":
+            raise RuntimeError(f"Could not load USD/KRW from any source: {first_err}")
+        warnings.warn(f"Skipping {name} ({code}): {first_err}")
 
     key = os.environ.get("ECOS_API_KEY")
     if key:

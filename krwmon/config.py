@@ -17,6 +17,17 @@ SERIES: dict[str, tuple[str, str, str, str, str]] = {
     "BRENT": ("yahoo", "BZ=F", "logret", "Brent crude (front month)", "Oil"),
 }
 
+# Used when the primary (Yahoo) download fails: (source, code, description).
+# FRED's H.10 rates are noon New York rates and are published weekly, so the
+# last few days can be missing; CNY is the onshore rate, a close proxy for CNH.
+FALLBACKS: dict[str, tuple[str, str, str]] = {
+    "USDKRW": ("fred", "DEXKOUS", "FRED DEXKOUS (KRW per USD, noon NY)"),
+    "DXY": ("fred", "DTWEXBGS", "FRED DTWEXBGS (broad trade-weighted dollar)"),
+    "USDCNH": ("fred", "DEXCHUS", "FRED DEXCHUS (onshore CNY per USD)"),
+    "BRENT": ("fred", "DCOILBRENTEU", "FRED DCOILBRENTEU (Brent spot)"),
+    "KOSPI": ("krx", "1001", "KRX KOSPI index via pykrx"),
+}
+
 # Optional driver: Korea 3y government bond yield from the Bank of Korea ECOS API.
 # Requires a free API key in the ECOS_API_KEY environment variable.
 # Stat/item codes: 817Y002 = market interest rates (daily), 010200000 = KTB 3y.
