@@ -1,31 +1,31 @@
-# USD/KRW Driver Note — 2026-11-05
+# USD/KRW Driver Note — 2026-11-06
 
-USD/KRW fell 0.21% to 1,340.1 on 05 Nov 2026. The driver model attributes Dollar bloc -0.37pp, Korean equities +0.16pp, Oil -0.08pp; +0.08pp is unexplained (KRW-specific flows or positioning). Largest single bucket: **Dollar bloc**.
+USD/KRW rose 1.21% to 1,356.3 on 06 Nov 2026. The driver model attributes Dollar bloc -0.11pp, Korean equities +0.19pp, Oil +0.03pp; +1.09pp is unexplained (KRW-specific flows or positioning). Largest single bucket: **Unexplained (KRW-specific)**.
 
 ## Key levels
 
 | Level | Value |
 |---|---|
-| Last | 1,340.1 |
-| 1-day change | -0.21% (z = -0.3 vs 60d vol) |
-| 20d / 60d moving average | 1,334.1 / 1,356.3 |
-| 1-month range | 1,321.8 – 1,344.8 |
-| 3-month range | 1,321.8 – 1,417.3 |
-| 20d realised vol (annualised) | 8.5% |
+| Last | 1,356.3 |
+| 1-day change | +1.21% (z = +1.9 vs 60d vol) |
+| 20d / 60d moving average | 1,334.8 / 1,355.3 |
+| 1-month range | 1,321.8 – 1,356.3 |
+| 3-month range | 1,321.8 – 1,416.8 |
+| 20d realised vol (annualised) | 9.5% |
 
-![USD/KRW](img/2026-11-05_price.png)
+![USD/KRW](img/2026-11-06_price.png)
 
 ## Attribution
 
 | Bucket | Last day | Last 20 days (cumulative) |
 |---|---|---|
-| Dollar bloc | -0.37pp | -0.11pp |
-| Korean equities | +0.16pp | +0.66pp |
-| Oil | -0.08pp | +0.10pp |
-| Unexplained (KRW-specific) | +0.08pp | -0.62pp |
-| **Actual USD/KRW move** | **-0.21%** | **+0.02%** |
+| Dollar bloc | -0.11pp | -0.67pp |
+| Korean equities | +0.19pp | +0.78pp |
+| Oil | +0.03pp | +0.15pp |
+| Unexplained (KRW-specific) | +1.09pp | +1.03pp |
+| **Actual USD/KRW move** | **+1.21%** | **+1.28%** |
 
-![Attribution](img/2026-11-05_attribution.png)
+![Attribution](img/2026-11-06_attribution.png)
 
 ## Current sensitivities
 
@@ -33,16 +33,16 @@ Rolling 120-day betas (point in time). Full-sample betas use Newey-West (HAC) t-
 
 | Driver | Rolling beta (now) | Full-sample beta | t-stat |
 |---|---|---|---|
-| US Dollar Index (% per 1%) | +0.948 | +0.516 | +12.7 |
-| USD/CNH (offshore yuan) (% per 1%) | -0.640 | +0.409 | +6.9 |
-| KOSPI index (% per 1%) | -0.031 | -0.059 | -6.6 |
-| Brent crude (front month) (% per 1%) | +0.008 | -0.005 | -0.7 |
+| US Dollar Index (% per 1%) | +0.873 | +0.515 | +12.6 |
+| USD/CNH (offshore yuan) (% per 1%) | -0.642 | +0.410 | +6.9 |
+| KOSPI index (% per 1%) | -0.035 | -0.059 | -6.7 |
+| Brent crude (front month) (% per 1%) | -0.002 | -0.005 | -0.7 |
 
-![Rolling betas](img/2026-11-05_betas.png)
+![Rolling betas](img/2026-11-06_betas.png)
 
 ## How reliable is this?
 
-- Out-of-sample explained share of daily moves: **27%** (betas estimated through the previous day only; 1,974 days).
+- Out-of-sample explained share of daily moves: **27%** (betas estimated through the previous day only; 1,975 days).
 - In-sample R² for comparison: 29% — optimistic by construction.
 - Sign of the move matched on **69%** of days.
 - This is attribution, not a forecast: same-day drivers explain same-day moves.
